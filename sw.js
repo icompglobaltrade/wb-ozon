@@ -1,5 +1,5 @@
 // Офлайн-режим: файлы приложения сохраняются на телефоне при первом открытии.
-const CACHE = "margin-calc-v2";
+const CACHE = "margin-calc-v3";
 const FILES = ["./", "index.html", "manifest.webmanifest", "apple-touch-icon.png", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", e => {

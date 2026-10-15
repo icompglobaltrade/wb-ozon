@@ -145,6 +145,7 @@ select.sel{appearance:none;-webkit-appearance:none;border:0;background:transpare
 .btns{display:flex;gap:8px;flex-wrap:wrap}
 .btn{border:0;background:var(--accent);color:var(--card);font-weight:600;border-radius:10px;padding:11px 16px;cursor:pointer;font-size:15px}
 .btn.ghost{background:var(--seg);color:var(--fg)}
+.sbtn{padding:7px 12px;font-size:14px;cursor:pointer;flex-shrink:0}
 .msg{font-size:13px;color:var(--muted);align-self:center}
 details.card>summary{list-style:none;cursor:pointer;padding:14px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px}
 details.card>summary::-webkit-details-marker{display:none}
@@ -240,6 +241,8 @@ tr.cur td{color:var(--accent);font-weight:600}
         <span class="rv"><input id="ozComm" type="text" inputmode="decimal" value="12"><i>%</i></span></label>
       <label class="row" data-for="oz" hidden><span class="rl">Блок категорий</span><select class="sel" id="ozBlock"></select></label>
       <label class="row" data-for="oz" hidden><span class="rl">Категория</span><select class="sel" id="ozCat"></select></label>
+      <div class="row" data-for="oz" hidden><span class="rl">Мои товары из API Ozon<small id="ozOwnNote">загрузите ozon_commissions.json</small></span>
+        <label class="btn ghost sbtn" for="ozFile">Загрузить</label><input id="ozFile" type="file" accept=".json,application/json" hidden></div>
       <label class="row"><span class="rl">Цена закупки</span><span class="rv"><input id="buy" type="text" inputmode="decimal" value="25"><i>¥</i></span></label>
       <label class="row"><span class="rl">Доп. расходы<small>упаковка, маркировка, на 1 шт.</small></span><span class="rv"><input id="extra" type="text" inputmode="decimal" value="3"><i>¥</i></span></label>
       <label class="row"><span class="rl">Курс юаня</span><span class="rv"><input id="rate" type="text" inputmode="decimal" value="11,5"><i>₽</i></span></label>
@@ -413,7 +416,7 @@ const SPEEDS=["Economy","Standard","Express"];
 const MK_NAME={wb:"WB Китай",oz:"Ozon Global"};
 
 /* ---------- state & helpers ---------- */
-const DEF={mk:"wb",mode:"margin",wbMethod:"dpx",ozScheme:"rfbs",ozCarrier:"cel",ozSpeed:0,ozCat:-1,wbSubj:"",ozLabel:""};
+const DEF={mk:"wb",mode:"margin",wbMethod:"dpx",ozScheme:"rfbs",ozCarrier:"cel",ozSpeed:0,ozCat:-1,wbSubj:"",ozLabel:"",ozOwn:null};
 const S=Object.assign({},DEF);
 const $=id=>document.getElementById(id);
 const num=id=>{const v=parseFloat(String($(id).value).replace(/\s/g,"").replace(",","."));return isFinite(v)?v:0};
@@ -457,6 +460,7 @@ function wbCosts(P,g){
 /* ---------- Ozon ---------- */
 function ozBand(P){return P<=1500?0:P<=5000?1:2}
 function ozRate(P){
+  if(S.ozOwn){const p=S.ozOwn.p||{},v=S.ozScheme==="fbp"?(p.fbp??p.rfbs??p.fbs):(p.rfbs??p.fbs??p.fbp??p.base);if(isFinite(v))return v/100}
   if(S.ozCat<0) return num("ozComm")/100;
   return OZ_COMM.cats[S.ozCat][2+(S.ozScheme==="fbp"?3:0)+ozBand(P)]/100;
 }
@@ -602,12 +606,16 @@ function searchSubj(q){
     for(const r of WBROWS){const n=r.n.toLowerCase();if(n.startsWith(q))a.push(r);else if(n.includes(q))b.push(r);if(a.length>=30)break}
     return a.concat(b).slice(0,30).map(r=>({title:r.n,sub:`${r.p} · FBS ${fmt(r.r[0],1)}% · FBW ${fmt(r.r[1],1)}%`,wb:r}));
   }
+  const own=[];
+  for(const o of OZOWN){const n=(o.name+" "+o.offer_id).toLowerCase();if(n.includes(q))own.push(o);if(own.length>=15)break}
+  const ownHits=own.map(o=>({title:o.name||o.offer_id,sub:`мой товар · ${o.offer_id}${o.type?" · "+o.type:""} · ${Object.entries(o.pct).map(([k,v])=>k.toUpperCase()+" "+fmt(v,1)+"%").join(", ")}`,own:o}));
   for(const t of OZ_COMM.types){const n=t[0].toLowerCase();if(n.startsWith(q))a.push(t);else if(n.includes(q))b.push(t);if(a.length>=30)break}
-  return a.concat(b).slice(0,30).map(t=>{const c=OZ_COMM.cats[t[2]];return {title:t[0]+(t[3]?" · "+t[3]:""),sub:`${OZ_COMM.subs[t[1]]} → ${c[1]} · rFBS ${fmt(c[2],1)}–${fmt(c[4],1)}%`,oz:t}});
+  return ownHits.concat(a.concat(b).slice(0,30).map(t=>{const c=OZ_COMM.cats[t[2]];return {title:t[0]+(t[3]?" · "+t[3]:""),sub:`${OZ_COMM.subs[t[1]]} → ${c[1]} · rFBS ${fmt(c[2],1)}–${fmt(c[4],1)}%`,oz:t}}));
 }
 function pick(h){
   if(h.wb){S.wbSubj=h.wb.n;applyWb()}
-  else{const t=h.oz;S.ozCat=t[2];S.ozLabel=t[0]+(t[3]?" ("+t[3]+")":"");fillOzSelects()}
+  else if(h.own){const o=h.own;S.ozOwn={n:o.name||o.offer_id,o:o.offer_id,p:o.pct};S.ozCat=-1;S.ozLabel=S.ozOwn.n;fillOzSelects()}
+  else{const t=h.oz;S.ozOwn=null;S.ozCat=t[2];S.ozLabel=t[0]+(t[3]?" ("+t[3]+")":"");fillOzSelects()}
   $("subj").value="";closeSugg();syncSubj();refresh();
 }
 function applyWb(){
@@ -618,7 +626,9 @@ function syncSubj(){
   const p=$("picked");let html="";
   if(S.mk==="wb"&&S.wbSubj){const r=WBROWS.find(x=>x.n===S.wbSubj);
     if(r) html=`<span class="tag">${esc(r.n)}</span><span style="color:var(--muted)">${esc(r.p)} · FBS ${fmt(r.r[0],1)}% · FBW ${fmt(r.r[1],1)}% · экспресс ${fmt(r.r[2],1)}%</span>`}
-  if(S.mk==="oz"&&S.ozCat>=0){const c=OZ_COMM.cats[S.ozCat];
+  if(S.mk==="oz"&&S.ozOwn){const o=S.ozOwn;
+    html=`<span class="tag">${esc(o.n)}</span><span style="color:var(--muted)">мой товар · ${esc(o.o)} · ${Object.entries(o.p).map(([k,v])=>k.toUpperCase()+" "+fmt(v,1)+"%").join(" · ")} · из API Ozon</span>`}
+  if(S.mk==="oz"&&!S.ozOwn&&S.ozCat>=0){const c=OZ_COMM.cats[S.ozCat];
     html=`<span class="tag">${esc(S.ozLabel||c[1])}</span><span style="color:var(--muted)">${esc(c[1])} · rFBS ${fmt(c[2],1)} / ${fmt(c[3],1)} / ${fmt(c[4],1)}% · FBP ${fmt(c[5],1)} / ${fmt(c[6],1)} / ${fmt(c[7],1)}%</span>`}
   p.innerHTML=html;p.hidden=!html;
   $("subj").placeholder=S.mk==="wb"?"Предмет WB: чехол, кружка, футболка…":"Тип товара Ozon: чехол, кружка, наушники…";
@@ -639,7 +649,7 @@ $("subj").addEventListener("keydown",e=>{
 $("sugg").addEventListener("click",e=>{const b=e.target.closest("button[data-i]");if(b)pick(hits[+b.dataset.i])});
 $("subjClr").onclick=()=>{
   $("subj").value="";closeSugg();
-  if(S.mk==="wb")S.wbSubj="";else{S.ozCat=-1;S.ozLabel="";fillOzSelects()}
+  if(S.mk==="wb")S.wbSubj="";else{S.ozCat=-1;S.ozLabel="";S.ozOwn=null;fillOzSelects()}
   syncSubj();refresh();
 };
 $("wbField").addEventListener("change",()=>{applyWb();syncSubj()});
@@ -652,10 +662,10 @@ function fillOzSelects(){
   $("ozCat").innerHTML=`<option value="-1">${cur?"выберите":"—"}</option>`+OZ_COMM.cats.map((c,i)=>[c,i]).filter(([c])=>c[0]===cur)
     .sort((a,b)=>a[0][1].localeCompare(b[0][1],"ru")).map(([c,i])=>`<option value="${i}"${i===S.ozCat?" selected":""}>${esc(c[1])}</option>`).join("");
 }
-$("ozBlock").addEventListener("change",()=>{S.ozCat=-1;S.ozLabel="";const b=$("ozBlock").value;
+$("ozBlock").addEventListener("change",()=>{S.ozCat=-1;S.ozLabel="";S.ozOwn=null;const b=$("ozBlock").value;
   $("ozCat").innerHTML=`<option value="-1">${b?"выберите":"—"}</option>`+OZ_COMM.cats.map((c,i)=>[c,i]).filter(([c])=>c[0]===b).sort((x,y)=>x[0][1].localeCompare(y[0][1],"ru")).map(([c,i])=>`<option value="${i}">${esc(c[1])}</option>`).join("");
   syncSubj();refresh()});
-$("ozCat").addEventListener("change",()=>{S.ozCat=+$("ozCat").value;S.ozLabel="";syncSubj();refresh()});
+$("ozCat").addEventListener("change",()=>{S.ozCat=+$("ozCat").value;S.ozLabel="";S.ozOwn=null;syncSubj();refresh()});
 
 /* ---------- render ---------- */
 const GROUPS=[["buy","Закупка и доп.","--s1"],["log","Логистика и невыкупы","--s2"],["fee","Комиссии площадки","--s3"],["ads","Реклама","--s4"],["tax","Налоги","--s5"],["profit","Прибыль","--s6"]];
@@ -675,8 +685,8 @@ function refresh(){
   const vr=+$("vat").value;
   $("taxNote").textContent=(tm==="usn15"?"База — цена без НДС минус все расходы; минимум 1% от дохода. ":"")+
     (vr===5||vr===7?"НДС 5% и 7% — для УСН с доходом от 20 млн ₽ в 2026 году, без вычетов. ":vr===22?"Входной НДС к вычету не учитывается. ":"При доходе до 20 млн ₽ на УСН НДС в 2026 году можно не платить. ")+"Взносы не учтены.";
-  $("ozComm").readOnly=S.ozCat>=0;
-  $("ozCommHint").textContent=S.ozCat>=0?"по таблице Ozon · зависит от цены":"выберите товар или введите";
+  $("ozComm").readOnly=S.ozCat>=0||!!S.ozOwn;
+  $("ozCommHint").textContent=S.ozOwn?"из API Ozon · для текущей цены товара":S.ozCat>=0?"по таблице Ozon · зависит от цены":"выберите товар или введите";
   $("wbCommHint").textContent=S.wbSubj?"по предмету · можно изменить":"выберите предмет или введите";
   syncMode();calc();save();
 }
@@ -729,7 +739,8 @@ function calc(){
   const row=(n,v,cl="")=>`<tr class="${cl}"><td>${esc(n)}</td><td class="n">${v<0?"−":""}${rub(Math.abs(v))}</td><td class="y">${yu(Math.abs(v)/g.R)}</td></tr>`;
   $("bd").tBodies[0].innerHTML=row("Цена продажи",P)+e.items.map(i=>row(i[0],-i[1])).join("")+row("Прибыль",e.profit,"tot");
 
-  if(mk==="oz"&&S.ozCat>=0){$("ozComm").value=String(+(ozRate(P)*100).toFixed(2)).replace(".",",");
+  if(mk==="oz"&&S.ozOwn){$("ozComm").value=String(+(ozRate(P)*100).toFixed(2)).replace(".",",")}
+  if(mk==="oz"&&!S.ozOwn&&S.ozCat>=0){$("ozComm").value=String(+(ozRate(P)*100).toFixed(2)).replace(".",",");
     $("ozCommHint").textContent=`по таблице: ${S.ozScheme==="fbp"?"FBP":"rFBS"}, цена ${["до 1 500 ₽","1 500–5 000 ₽","от 5 000 ₽"][ozBand(P)]}`}
 
   $("mbP").textContent=rub(P);$("mbS").textContent=`прибыль ${rub(e.profit)} · маржа ${pct(e.margin)}`;
@@ -750,6 +761,22 @@ $("reset").onclick=()=>{
   armed=false;$("reset").textContent="Сбросить";
   Object.assign(S,DEF);IDS.forEach(id=>$(id).value=DEFV[id]);fillOzSelects();syncSubj();refresh();$("msg").textContent="Сброшено";
 };
+
+/* ---------- own Ozon products from API ---------- */
+let OZOWN=[];
+function setOwn(d,save){
+  const rows=(d&&d.rows||[]).filter(r=>r&&(r.name||r.offer_id)&&r.pct&&Object.keys(r.pct).length);
+  if(!rows.length){$("ozOwnNote").textContent="В файле нет товаров с комиссиями. Нужен ozon_commissions.json из скрипта.";return}
+  OZOWN=rows.map(r=>({name:String(r.name||""),offer_id:String(r.offer_id||""),type:r.type||"",pct:r.pct}));
+  $("ozOwnNote").textContent=`${OZOWN.length.toLocaleString("ru-RU")} товаров · API от ${d.date||"—"} · ищутся в поиске выше`;
+  if(save){try{localStorage.setItem("ozOwn",JSON.stringify({date:d.date,rows:OZOWN}))}catch(_){}}
+}
+$("ozFile").addEventListener("change",e=>{
+  const f=e.target.files[0];if(!f)return;const rd=new FileReader();
+  rd.onload=()=>{try{setOwn(JSON.parse(String(rd.result).replace(/^\uFEFF/,"")),true)}catch(_){$("ozOwnNote").textContent="Не удалось прочитать файл: нужен ozon_commissions.json."}};
+  rd.readAsText(f,"utf-8");
+});
+try{const s=localStorage.getItem("ozOwn");if(s)setOwn(JSON.parse(s),false)}catch(_){}
 
 restore();fillOzSelects();syncSubj();refresh();
 </script>

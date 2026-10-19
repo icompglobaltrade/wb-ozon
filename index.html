@@ -352,6 +352,9 @@ tr.cur td{color:var(--accent);font-weight:600}
       <label class="row"><span class="rl">Реклама (ДРР)<small>% от цены продажи</small></span><span class="rv"><input id="drr" type="text" inputmode="decimal" value="5"><i>%</i></span></label>
       <label class="row"><span class="rl">Процент выкупа</span><span class="rv"><input id="bo" type="text" inputmode="decimal" value="85"><i>%</i></span></label>
       <label class="row"><span class="rl">Возврат невыкупа<small>обратная доставка за 1 шт.</small></span><span class="rv"><input id="ret" type="text" inputmode="decimal" value="5"><i>¥</i></span></label>
+      <label class="row" data-for="wb"><span class="rl">Вывод средств с Payful<small>% от суммы, пришедшей на Payful</small></span><span class="rv"><input id="wbWd" type="text" inputmode="decimal" value="3"><i>%</i></span></label>
+      <label class="row" data-for="oz" hidden><span class="rl">Вывод средств<small>% от суммы на счёте при выводе, если платите</small></span><span class="rv"><input id="ozWd" type="text" inputmode="decimal" value="0"><i>%</i></span></label>
+      <label class="row" data-for="ym" hidden><span class="rl">Вывод средств<small>% от суммы на счёте при выводе, если платите</small></span><span class="rv"><input id="ymWd" type="text" inputmode="decimal" value="0"><i>%</i></span></label>
       <label class="row"><span class="rl">Скидка площадки (СПП)<small>для цены на полке</small></span><span class="rv"><input id="spp" type="text" inputmode="decimal" value="0"><i>%</i></span></label>
     </div>
   </section>
@@ -398,7 +401,7 @@ tr.cur td{color:var(--accent);font-weight:600}
   <details class="card">
     <summary>Как считается</summary>
     <div class="dbody">
-      <p class="note" data-for="wb"><b>WB Китай.</b> Комиссия = цена × ставка предмета (мин. 1%). Payful 0,8% от (цена − комиссия − доставка). Доставка из Китая = вес (вверх до 0,1 кг) × ставка + сбор, тарифы WB с 01.09.2026. По России: 8 ¥ + (литры − 1) × 2 ¥, вверх до целого. Невыкупы: (1 − выкуп)/выкуп × (доставка по России + возврат), невыкуп продаётся повторно.</p>
+      <p class="note" data-for="wb"><b>WB Китай.</b> Комиссия = цена × ставка предмета (мин. 1%). Payful 0,8% от (цена − комиссия − доставка). Вывод с Payful — 3% от суммы, которая пришла на Payful после всех удержаний WB (комиссия, Payful 0,8%, логистика, невыкупы, реклама); ставку можно изменить. Доставка из Китая = вес (вверх до 0,1 кг) × ставка + сбор, тарифы WB с 01.09.2026. По России: 8 ¥ + (литры − 1) × 2 ¥, вверх до целого. Невыкупы: (1 − выкуп)/выкуп × (доставка по России + возврат), невыкуп продаётся повторно.</p>
       <p class="note" data-for="ym" hidden><b>Яндекс Маркет.</b> Размещение — % от вашей цены по категории и модели (FBP / FBS / FBS Last Mile), справка Маркета для иностранных продавцов, собрано 15.10.2026; для категории берётся самая частая ставка внутри неё. Перевод платежа — % от цены по графику выплат. FBS: плата за заказ + ставка за кг (Extra Small — за грамм); у служб «шаг 100 г» вес округляется вверх до 100 г. FBP: плата за заказ + ставка за кг. FBS Last Mile: 5% от цены (не более 1 000 ₽) + средняя миля по объёму (80 ₽ до 1 л, +9 ₽/л до 30 л, +7 ₽/л до 200 л, +5 ₽/л дальше, не более 5 000 ₽). Невыкупы: (1 − выкуп)/выкуп × (доставка + возврат).</p>
       <p class="note" data-for="oz" hidden><b>Ozon Global.</b> Комиссия по таблицам Ozon Global: rFBS и FBP с 01.12.2025, WHD с 06.05.2026; зависит от категории, схемы и цены — до 1 500 ₽, 1 500–5 000 ₽, от 5 000 ₽. Доставка = сбор + вес в граммах × ставка (тарифы с 24.08.2026); группа зависит от цены в юанях и веса, для Big — объёмный вес (/12 000). OGL: +2% от отправления (15–200 ₽). FBP: Ural, 18 ¥ + 4 ¥ за 100 г.</p>
       <p class="note"><b>Налоги.</b> НДС входит в цену: НДС = цена × ставка / (100 + ставка). УСН «Доходы»: ставка × (база − НДС), база — цена продажи или сумма к выплате. УСН «Доходы − расходы»: ставка × (цена без НДС − все расходы), но не меньше 1% от дохода. Страховые взносы и вычеты НДС не учитываются.</p>
@@ -2235,7 +2238,12 @@ function evalAt(mk,P,g){
   const r=MK[mk](P,g); if(r.err) return r;
   const costs=r.items.reduce((s,i)=>s+i[1],0);
   const ded=r.items.filter(i=>i[2]==="fee"||i[2]==="log").reduce((s,i)=>s+i[1],0);
-  const items=r.items.concat(taxItems(P,P-ded,costs));
+  const wr=num(mk+"Wd")/100, base=r.items.slice();
+  // остаток к выводу: всё, что площадка перечислила после своих удержаний и рекламы
+  const ads=r.items.filter(i=>i[2]==="ads").reduce((s,i)=>s+i[1],0), avail=Math.max(P-ded-ads,0);
+  let wd=0;
+  if(wr>0){wd=wr*avail;base.push([`Вывод с ${mk==="wb"?"Payful":"счёта"} ${fmt(wr*100,1)}% от ${rub(avail)} к выводу`,wd,"fee"]);}
+  const items=base.concat(taxItems(P,P-ded,costs+wd));
   const cost=items.reduce((s,i)=>s+i[1],0), profit=P-cost, invest=(g.C+g.E)*g.R;
   return {items,tag:r.tag,P,cost,profit,margin:profit/P,roi:invest>0?profit/invest:NaN};
 }
@@ -2266,7 +2274,7 @@ function solve(mk,mode,t,g,how){
 }
 
 /* ---------- persistence ---------- */
-const IDS=["ymComm","ymPay","ymLmOwn","whdLog","target","rounding","wbComm","wbField","ozComm","buy","extra","rate","len","wid","hei","wt","cKg","cFix","ozAcq","taxMode","taxRate","taxBase","vat","drr","bo","ret","spp"];
+const IDS=["wbWd","ozWd","ymWd","ymComm","ymPay","ymLmOwn","whdLog","target","rounding","wbComm","wbField","ozComm","buy","extra","rate","len","wid","hei","wt","cKg","cFix","ozAcq","taxMode","taxRate","taxBase","vat","drr","bo","ret","spp"];
 const DEFV={};IDS.forEach(id=>DEFV[id]=$(id).value);
 function save(){try{const v={};IDS.forEach(id=>v[id]=$(id).value);localStorage.setItem("mc3",JSON.stringify({S,v}))}catch(_){}}
 function restore(){try{const o=JSON.parse(localStorage.getItem("mc3")||"null");if(!o)return;
